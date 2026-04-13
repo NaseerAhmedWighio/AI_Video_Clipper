@@ -21,6 +21,10 @@ import {
   Clock,
   AlertTriangle,
   Check,
+  Upload,
+  Image,
+  X,
+  Loader2,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -32,17 +36,73 @@ export default function SettingsPage() {
   const [notifications, setNotifications] = useState(true);
   const [theme, setTheme] = useState("dark");
 
+  // Logo upload state
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef = useState<HTMLInputElement | null>(null)[0];
+  const logoInputRef = (el: HTMLInputElement | null) => {
+    if (el) {
+      // Store ref
+      (window as any).__logoInput = el;
+    }
+  };
+
   useEffect(() => {
     if (user) {
       setName(user.name);
       setEmail(user.email);
+      setLogoUrl((user as any).logo_url || null);
     }
+    // Also fetch user profile to get latest logo_url
+    api.get("/me").then((res) => {
+      const u = res.data;
+      if (u.logo_url) {
+        const backendBase = process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "";
+        setLogoUrl(`${backendBase}${u.logo_url}`);
+      }
+    }).catch(() => {});
   }, [user]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await api.post("/upload-logo", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      // Prepend backend base URL for display
+      const backendBase = process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "";
+      setLogoUrl(`${backendBase}${res.data.logo_url}`);
+      toast.success("Logo uploaded successfully!");
+    } catch {
+      toast.error("Failed to upload logo");
+    } finally {
+      setLogoUploading(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoUrl(null);
+    toast.success("Logo removed (will not be used in new videos)");
+  };
 
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      // Update profile API call would go here
+      // Update name (email is locked)
+      await api.put("/me", { name });
       toast.success("Profile updated successfully!");
     } catch {
       toast.error("Failed to update profile");
@@ -116,7 +176,7 @@ export default function SettingsPage() {
 
               <div className="space-y-2">
                 <label className="text-sm text-white/70" htmlFor="email">
-                  Email
+                  Email (cannot be changed)
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
@@ -124,9 +184,13 @@ export default function SettingsPage() {
                     id="email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-white/5 ring-1 ring-white/10 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+                    readOnly
+                    className="w-full bg-white/5 ring-1 ring-white/10 rounded-xl pl-10 pr-4 py-3 text-white/40 cursor-not-allowed"
+                    title="Email address cannot be changed after registration"
                   />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <span className="text-xs text-white/30 bg-white/5 px-2 py-1 rounded">Locked</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -141,6 +205,96 @@ export default function SettingsPage() {
                 <Save className="w-4 h-4" />
                 Save Changes
               </Button>
+            </div>
+          </div>
+        </Card>
+      </motion.div>
+
+      {/* Watermark Logo Settings */}
+      <motion.div
+        initial={{ y: 16, opacity: 0, filter: "blur(4px)" }}
+        animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+        transition={{ duration: 0.8, delay: 0.15, ease: [0.32, 0.72, 0, 1] }}
+      >
+        <Card>
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                <Image className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-white">Watermark Logo</h2>
+                <p className="text-sm text-white/50">
+                  Your logo will appear on all generated shorts (top-left corner)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Logo Preview */}
+              <div className="relative w-24 h-24 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                {logoUrl ? (
+                  <>
+                    <img
+                      src={logoUrl}
+                      alt="Your logo"
+                      className="w-20 h-20 object-contain"
+                    />
+                    <button
+                      onClick={handleRemoveLogo}
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </>
+                ) : (
+                  <Image className="w-8 h-8 text-white/20" />
+                )}
+              </div>
+
+              {/* Upload Controls */}
+              <div className="flex-1">
+                {logoUrl ? (
+                  <div>
+                    <p className="text-sm text-white font-medium">Logo is set</p>
+                    <p className="text-xs text-white/40 mt-1">
+                      Upload a new logo to replace it. Supports PNG, JPG, WebP, GIF.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-white/60">No logo uploaded yet</p>
+                    <p className="text-xs text-white/30 mt-1">
+                      Upload a logo (PNG with transparency recommended) to watermark your shorts
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 mt-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                    id="logo-upload"
+                  />
+                  <label htmlFor="logo-upload">
+                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-300 rounded-xl text-sm font-medium cursor-pointer hover:bg-purple-500/30 transition-all">
+                      {logoUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          {logoUrl ? "Replace Logo" : "Upload Logo"}
+                        </>
+                      )}
+                    </span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </Card>

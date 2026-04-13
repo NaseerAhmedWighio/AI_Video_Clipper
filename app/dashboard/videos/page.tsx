@@ -15,6 +15,7 @@ interface VideoItem {
   title: string;
   duration: number;
   status: "pending" | "processing" | "completed" | "failed";
+  progress: number;
   created_at: string;
   thumbnail_url?: string;
   shorts_count?: number;

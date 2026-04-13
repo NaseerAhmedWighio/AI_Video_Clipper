@@ -58,6 +58,8 @@ export default function VideoDetailPage() {
   const [shorts, setShorts] = useState<Short[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [processingMode, setProcessingMode] = useState<"crop" | "fit">("crop");
+  const [showModeSelector, setShowModeSelector] = useState(false);
 
   // Refs for polling management
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -131,11 +133,14 @@ export default function VideoDetailPage() {
   const handleProcessVideo = async () => {
     try {
       setProcessing(true);
-      await api.post(`/process-video/${videoId}`);
-      toast.success("Processing started!");
+      await api.post(`/process-video/${videoId}`, null, {
+        params: { processing_mode: processingMode },
+      });
+      toast.success(`Processing started (${processingMode === "crop" ? "fill" : "letterbox"})!`);
 
       // Start polling immediately
       startPolling();
+      setShowModeSelector(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Failed to start processing");
       setProcessing(false);
@@ -264,7 +269,7 @@ export default function VideoDetailPage() {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {video.status === "completed" && shorts.length > 0 && (
               <Button variant="secondary" onClick={handleDownloadAll}>
                 <Download className="w-4 h-4" />
@@ -272,14 +277,59 @@ export default function VideoDetailPage() {
               </Button>
             )}
             {(video.status === "pending" || video.status === "failed") && (
-              <Button
-                variant="primary"
-                onClick={handleProcessVideo}
-                isLoading={processing}
-              >
-                <RefreshCw className="w-4 h-4" />
-                {video.status === "failed" ? "Retry" : "Process Video"}
-              </Button>
+              <div className="relative">
+                <Button
+                  variant="primary"
+                  onClick={() => setShowModeSelector(!showModeSelector)}
+                  isLoading={processing}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {video.status === "failed" ? "Retry" : "Process Video"}
+                </Button>
+
+                {/* Processing Mode Selector */}
+                {showModeSelector && (
+                  <div className="absolute top-full mt-2 left-0 z-50 w-72 bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl">
+                    <p className="text-sm font-medium text-white mb-3">
+                      Choose Processing Mode
+                    </p>
+
+                    {/* Crop Mode */}
+                    <button
+                      onClick={() => { setProcessingMode("crop"); handleProcessVideo(); }}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all mb-2 ${
+                        processingMode === "crop"
+                          ? "bg-purple-500/20 ring-2 ring-purple-500/50"
+                          : "bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="w-12 h-20 bg-gradient-to-b from-purple-500 to-blue-500 rounded-lg flex-shrink-0" />
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-white">Fill View (Crop)</p>
+                        <p className="text-xs text-white/50">Zooms & crops to fill 9:16 — no black bars</p>
+                      </div>
+                    </button>
+
+                    {/* Fit Mode */}
+                    <button
+                      onClick={() => { setProcessingMode("fit"); handleProcessVideo(); }}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                        processingMode === "fit"
+                          ? "bg-purple-500/20 ring-2 ring-purple-500/50"
+                          : "bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="w-12 h-20 bg-gray-800 rounded-lg flex-shrink-0 flex items-center justify-center">
+                        <div className="w-8 h-6 bg-gradient-to-b from-purple-500 to-blue-500 rounded" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-white">Letterbox (Fit)</p>
+                        <p className="text-xs text-white/50">Keeps original ratio — black bars top/bottom</p>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             <Button variant="ghost" onClick={handleDelete}>
               <Trash2 className="w-4 h-4 text-red-400" />
